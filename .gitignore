@@ -1,0 +1,100 @@
+# =========================
+# Python
+# =========================
+
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# =========================
+# Jupyter / Interactive
+# =========================
+
+.ipynb_checkpoints/
+
+# =========================
+# Project Data
+# =========================
+
+# Human gameplay dataset
+human_gameplay.csv
+
+# CSV backups / temporary datasets
+*.csv.bak
+*.csv.tmp
+*.backup
+
+# =========================
+# Local Test / Generated Files
+# =========================
+
+*.log
+*.tmp
+*.temp
+
+# =========================
+# IDE / Editor
+# =========================
+
+.vscode/
+.idea/
+*.code-workspace
+
+# =========================
+# Operating System
+# =========================
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# macOS
+.DS_Store
+
+# Linux
+*~
+
+# =========================
+# Local Configuration / Secrets
+# =========================
+
+.env
+.env.*
+!.env.example
+
+# API keys / local secrets
+secrets.json
+config.local.json
+
+# =========================
+# Research / Experimental Output
+# =========================
+
+results/
+outputs/
+experiments_output/
+checkpoints/
+models/
+
+# =========================
+# Temporary files
+# =========================
+
+*.swp
+*.swo
+*.bak
+*.old
+#+end
