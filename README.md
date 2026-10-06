@@ -1,757 +1,454 @@
-# Minesweeper Gameplay Steganography
+<div align="center">
 
-A research-oriented Minesweeper system that explores **steganography through gameplay decision sequences** rather than directly modifying the hidden mine layout.
+<img src="assets/banner.png" alt="Minesweeper Gameplay Steganography banner" width="100%">
 
-The project combines a clickable Minesweeper environment, gameplay data collection, logical solving, probability estimation, human-behavior modeling, and adaptive steganographic move selection.
+![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?style=flat-square&logo=python&logoColor=white)
+![GUI](https://img.shields.io/badge/GUI-Tkinter-informational?style=flat-square)
+![Status](https://img.shields.io/badge/Status-Research%20Prototype-blueviolet?style=flat-square)
+![Topic](https://img.shields.io/badge/Topic-Steganography-critical?style=flat-square)
+![Field](https://img.shields.io/badge/Field-Behavioral%20Information%20Hiding-ff69b4?style=flat-square)
+![Authors](https://img.shields.io/badge/Authors-2-success?style=flat-square)
+
+**A Minesweeper clone that hides messages in *how* it's played — not in where the mines are.**
+
+</div>
 
 ---
 
-## Research Idea
+## 📑 Table of Contents
 
-Traditional Minesweeper-based steganography can use the hidden mine configuration as a carrier.
+- [🧭 Research Idea](#-research-idea)
+- [🏗️ Current Architecture](#️-current-architecture)
+- [🔁 How Encoding & Decoding Work](#-how-encoding--decoding-work)
+- [🧩 Project Components](#-project-components)
+- [🧮 Minesweeper Mathematical Model](#-minesweeper-mathematical-model)
+- [🧠 Human Behavior Modeling](#-human-behavior-modeling)
+- [🔐 Steganographic Encoding](#-steganographic-encoding-in-gameplay)
+- [📡 Blind Replay Decoder](#-blind-replay-decoder)
+- [📊 Human Gameplay Dataset](#-human-gameplay-dataset)
+- [🧪 Research Methodology](#-research-methodology)
+- [📈 Main Evaluation Metrics](#-main-evaluation-metrics)
+- [🧱 Baselines & 🔬 Ablations](#-baselines)
+- [✅ Current Status](#-current-status)
+- [🗺️ Roadmap](#️-next-development-steps)
+- [📁 Repository Structure](#-repository-structure)
+- [▶️ Running the Game](#️-running-the-game)
+- [🎓 Research Caveat](#-research-caveat)
+- [❓ Questions a Professor May Ask](#-questions-a-professor-may-ask)
+- [📚 Formula Sheet & Terminology](#-appendix-a--compact-formula-sheet)
+- [👥 Authors](#-authors)
 
-This project investigates a different carrier:
+---
 
-> **The sequence of gameplay decisions made during a Minesweeper session.**
+## 🧭 Research Idea
 
-The central research question is:
+A research-oriented Minesweeper system that explores **steganography through gameplay decision sequences**, rather than directly modifying the hidden mine layout.
 
-> **How much information can be embedded into Minesweeper gameplay while keeping the resulting sequence safe, playable, and behaviorally similar to natural human gameplay?**
+The project combines a clickable Minesweeper environment, gameplay data collection, logical solving, probability estimation, human-behavior modeling, and adaptive steganographic move selection.
+
+> [!NOTE]
+> **Classical approach:** hide the message in the mine configuration itself.
+> **This project's approach:** hide the message in **the sequence of gameplay decisions** made during a session.
+
+**Primary research question:**
+
+> How much information can be embedded into Minesweeper gameplay while keeping the resulting sequence safe, playable, and behaviorally similar to natural human gameplay?
+
+This breaks into four sub-problems:
+
+| # | Sub-problem |
+|---|---|
+| 1 | How should the system identify moves that are valid and reasonably safe? |
+| 2 | How can real human move preferences be measured instead of guessed? |
+| 3 | How can the available decision space be converted into variable information capacity? |
+| 4 | How can the embedded sequence be decoded from gameplay alone and evaluated against steganalysis? |
 
 The long-term goal is to select among multiple plausible moves so that the selected move carries information while still looking like a normal player's decision.
 
 ---
 
-## Current Architecture
+## 🏗️ Current Architecture
 
-```text
-                ┌──────────────────────┐
-                │ Clickable Minesweeper │
-                └──────────┬───────────┘
-                           │
-                           ▼
-                ┌──────────────────────┐
-                │ Gameplay Data Logger │
-                └──────────┬───────────┘
-                           │
-                           ▼
-                  human_gameplay.csv
-                           │
-                           ▼
-                ┌──────────────────────┐
-                │ Human Behavior Model │
-                └──────────┬───────────┘
-                           │
-             ┌─────────────┴─────────────┐
-             ▼                           ▼
-      Solver / Risk Model         Steganographic
-                                      Encoder
-             │                           │
-             └─────────────┬─────────────┘
-                           ▼
-                   Gameplay Sequence
-                           │
-                           ▼
-                    Blind Decoder
+```mermaid
+flowchart TD
+    A["🖱️ Clickable Minesweeper GUI"] --> B["📝 Gameplay Data Logger"]
+    B --> C[("human_gameplay.csv")]
+    C --> D["🧠 Human Behavior Model"]
+    D --> E["🧮 Solver / Risk Model"]
+    D --> F["🔐 Steganographic Encoder"]
+    E --> F
+    F --> G["🎮 Gameplay Sequence"]
+    G --> H["📡 Blind Decoder"]
+
+    classDef io fill:#1f6feb,stroke:#58a6ff,color:#fff,stroke-width:1px;
+    classDef proc fill:#8957e5,stroke:#a371f7,color:#fff,stroke-width:1px;
+    classDef data fill:#238636,stroke:#3fb950,color:#fff,stroke-width:1px;
+    class A,H io
+    class B,D,E,F proc
+    class C,G data
 ```
 
 ---
 
-## Project Components
+## 🔁 How Encoding & Decoding Work
 
-### `clickable_minesweeper.py`
+The receiver is never handed the secret bits directly — only the public game replay. It reconstructs the same candidate sets independently and reads the message back out of *which* moves were chosen.
 
-A graphical Minesweeper implementation built with Tkinter.
+```mermaid
+sequenceDiagram
+    participant S as Sender (Encoder)
+    participant Pub as Public Game Sequence
+    participant R as Receiver (Blind Decoder)
 
-Features include:
-
-- Left-click to reveal cells
-- Right-click to flag/unflag cells
-- Double-click/chording on revealed numbers
-- Mine counter
-- Timer
-- Restart button
-- First-click-safe board generation
-- Win/loss detection
-- Automatic gameplay logging
-
-The interface is designed to let a human play naturally without entering candidate indices manually.
-
----
-
-### `minesweeper.py`
-
-Core Minesweeper game logic.
-
-Responsibilities include:
-
-- Board generation
-- Mine placement
-- Neighbor calculation
-- Number generation
-- Reveal/flood-fill behavior
-- Flag handling
-- Game state
-- Win/loss logic
-
----
-
-### `solver.py`
-
-Visible-state Minesweeper solver.
-
-The solver uses information available from the revealed board rather than directly inspecting hidden mines for decision making.
-
-It can derive:
-
-- Guaranteed safe cells
-- Guaranteed mines
-- Constraint relationships
-- Candidate cells
-- Estimated mine probabilities
-
-Basic Minesweeper constraints can be represented as:
-
-\[
-\sum_{j \in U_i} x_j = k_i
-\]
-
-where:
-
-- \(U_i\) = unknown neighboring cells around a revealed number
-- \(x_j \in \{0,1\}\) indicates whether a cell contains a mine
-- \(k_i\) = number of remaining mines implied by the clue
-
----
-
-### `encoder.py`
-
-Adaptive gameplay steganography.
-
-The encoder represents the secret as a numerical value and embeds information through the choice of gameplay moves.
-
-Instead of forcing a fixed number of bits per move, the project uses a variable radix:
-
-\[
-b_t = \log_2(R_t)
-\]
-
-where \(R_t\) is the number of usable candidate choices at step \(t\).
-
-The theoretical capacity over a sequence of moves is:
-
-\[
-C = \sum_{t=1}^{T} \log_2(R_t)
-\]
-
-This is the basis of the mixed-radix encoding approach.
-
----
-
-### `decoder.py`
-
-Blind replay decoder.
-
-The intended receiver is given the gameplay sequence rather than the secret message.
-
-For each move:
-
-\[
-d_t = \text{index of selected move among candidate choices}
-\]
-
-The move sequence can then be interpreted as digits in a mixed-radix representation.
-
-The decoder reconstructs the embedded integer and extracts:
-
-- Sentinel
-- Payload length
-- Message bytes
-
-The research goal is that the receiver can recover the message from the replay without being explicitly given the secret bit sequence.
-
----
-
-### `behavior_model.py`
-
-Human gameplay behavior modeling.
-
-The current framework extracts features such as:
-
-- Safety / estimated mine risk
-- Information value
-- Locality
-- Frontier relationship
-- Distance from previous action
-
-A probability distribution over candidate moves can be represented using softmax:
-
-\[
-P(i \mid s)
-=
-\frac{e^{z_i}}
-{\sum_j e^{z_j}}
-\]
-
-where:
-
-- \(s\) = current game state
-- \(i\) = candidate move
-- \(z_i\) = score/logit for candidate \(i\)
-
-The current heuristic system is intended as a baseline. The longer-term goal is to train the model from actual human gameplay data.
-
----
-
-## Human Gameplay Dataset
-
-The clickable interface automatically records gameplay into:
-
-```text
-human_gameplay.csv
+    S->>S: Encode secret message as integer V
+    loop for each move t
+        S->>S: Build candidate set C_t (Solver + Behavior Model)
+        S->>S: R_t = |C_t|,  d_t = V mod R_t
+        S->>Pub: Play move at index d_t (looks like ordinary play)
+        S->>S: V = floor(V / R_t)
+    end
+    R->>Pub: Observe public move sequence only
+    loop for each move t
+        R->>R: Reconstruct C_t independently (same solver + model)
+        R->>R: d_t = index of move_t within C_t
+    end
+    R->>R: V = Σ d_t · Π(R_i, i<t)
+    R->>R: Parse sentinel + length + payload → secret message
 ```
 
-The dataset is intended to represent the information available to a human player at decision time.
+> [!TIP]
+> Because both sides rebuild the candidate list from the same public rules, no side-channel metadata (radix values, digit indices) ever needs to travel with the message — only the gameplay itself.
 
-Examples of recorded information include:
+---
 
-- Session ID
-- Game ID
-- Game seed
-- Board dimensions
-- Mine count
-- Step number
-- Timestamp
-- Time between actions
-- Action type
-- Cell coordinates
-- Whether the action was the first move
-- Revealed cells before and after the action
-- Flags before and after the action
+## 🧩 Project Components
+
+| File | Role |
+|---|---|
+| 🖥️ `clickable_minesweeper.py` | Tkinter GUI — reveal, flag, chord, mine counter, timer, restart, first-click-safe generation, win/loss detection, **automatic gameplay logging**. Lets a human play naturally with no manual candidate typing. |
+| ⚙️ `minesweeper.py` | Core game logic — board generation, mine placement, neighbor calculation, number generation, flood-fill reveal, flag handling, game state, win/loss logic. |
+| 🧮 `solver.py` | Visible-state solver. Derives guaranteed-safe cells, guaranteed mines, constraint relationships, candidate cells, and estimated mine probabilities — using only what's visible, never the hidden mine map. |
+| 🔐 `encoder.py` | Adaptive gameplay steganography. Represents the secret as an integer and embeds it through **mixed-radix** move selection (variable bits per move, not a fixed rate). |
+| 📡 `decoder.py` | Blind replay decoder. Reconstructs the embedded integer from the public move sequence alone, then extracts sentinel, payload length, and message bytes. |
+| 🧠 `behavior_model.py` | Human gameplay behavior modeling — safety, information value, locality, frontier relationship, distance from previous action; converts scores to a probability distribution via softmax. |
+| 🧪 `experiments.py` | Experimental pipeline — capacity, accuracy, risk, behavioral divergence, steganalysis. |
+| 📥 `data_collector.py` | Gameplay logging utilities feeding `human_gameplay.csv`. |
+
+---
+
+## 🧮 Minesweeper Mathematical Model
+
+Let the board have $R$ rows and $C$ columns, with $M$ hidden mines.
+
+**Neighbor set** (interior cells have $|N(r,c)| = 8$; edges/corners have fewer):
+
+$$N(r,c) = \{(r+dr,\,c+dc) : dr,dc \in \{-1,0,1\},\ (dr,dc) \neq (0,0)\}$$
+
+**Number displayed by a revealed cell:**
+
+$$n(r,c) = \sum_{(u,v)\in N(r,c)} \mathbb{1}[(u,v)\text{ is a mine}]$$
+
+> [!NOTE]
+> **First-click safety:** mines are generated *after* the first reveal. The clicked cell and all of its neighbors are protected before random placement — $\text{Protected(first)} = \{\text{first cell}\} \cup N(\text{first cell})$. The first move is treated as board initialization, not a risky human decision.
+
+**Win condition:** revealed safe cells $\geq R \cdot C - M$. Flags do not independently define a win — every non-mine cell must be revealed.
+
+### Visible-state solver & risk estimation
+
+The solver never uses hidden mines as an oracle. For each hidden candidate cell $j$: $x_j \in \{0,1\}$, where $x_j = 1$ means cell $j$ contains a mine.
+
+A revealed number $k$ with hidden neighbors $U$ and $f$ already-flagged mines gives the constraint:
+
+$$\sum_{j \in U} x_j = k - f$$
+
+**Direct logical deduction:**
+
+| Condition | Conclusion |
+|---|---|
+| $k - f = 0$ | Every cell in $U$ is safe |
+| $k - f = \lvert U \rvert$ | Every cell in $U$ is a mine |
+| $A \subset B$, $\text{sum}(A)=a$, $\text{sum}(B)=b$ | $\text{sum}(B \setminus A) = b - a$ |
+
+**Exact probability by enumeration**, when the unresolved frontier of $F$ unknowns is small enough (or splits into manageable components):
+
+$$P(x_j = 1 \mid \text{visible state}) = \frac{\#\ \text{valid assignments with } x_j = 1}{\#\ \text{all valid assignments}}$$
+
+**Risk-aware candidate set**, with tolerance $\tau$:
+
+$$C_t = \{c : P(\text{mine at } c \mid S_t) \leq \tau\}$$
+
+---
+
+## 🧠 Human Behavior Modeling
+
+> [!IMPORTANT]
+> A hand-written ranking is **not** the same as genuinely human behavior. The current heuristic model is a baseline — the research goal is to replace it with parameters learned from real collected gameplay.
+
+**Current heuristic features:** safety / estimated mine risk, information value, locality, frontier relationship, distance from previous action, timing.
+
+**Score → probability (softmax):**
+
+$$P(c_i \mid S_t) = \frac{e^{\beta s_i}}{\sum_j e^{\beta s_j}}$$
+
+$\beta \to 0$ approaches uniform selection; larger $\beta$ concentrates probability on high-scoring moves.
+
+**Behavioral entropy** and **efficiency** (upper-bounds how much information a state's choice distribution can support):
+
+$$H(P_t) = -\sum_i P(c_i\mid S_t)\log_2 P(c_i \mid S_t) \qquad \eta_{\text{behavior}} = \frac{H(P_t)}{\log_2 N}$$
+
+A value close to 1 means probability is spread broadly across candidates — high entropy gives more apparent choice freedom, but on its own isn't enough: the choices must also *match* real human behavior.
+
+### From raw logs to a learned choice model
+
+The preferred training unit is a **board-decision state**: multiple candidate moves + one selected candidate (not just "what the human clicked").
+
+$$\varphi(S_t, c) = [\,\text{risk, information, locality, frontier, adjacency, hidden-neighbors, distance, timing}, \dots]$$
+
+**Calibration & evaluation:**
+
+| Metric | Formula |
+|---|---|
+| Log Loss | $-\frac{1}{N}\sum_i \log p_i(y_i)$ |
+| Brier Score | $\frac{1}{N}\sum_i (p_i - y_i)^2$ |
+| Top-k Accuracy | $\dfrac{\#\{\text{examples where true choice} \in \text{top-}k\}}{N}$ |
+
+Baseline candidates: Logistic Regression, Random Forest, Gradient Boosting, other calibrated classifiers.
+
+---
+
+## 🔐 Steganographic Encoding in Gameplay
+
+The encoder treats the set of valid candidate moves at each step as a **symbol alphabet**. Instead of sending a digit explicitly, it *chooses a candidate* — a public observer sees only normal gameplay.
+
+**Protocol framing:**
+
+| Field | Size |
+|---|---|
+| Sentinel | 1 bit |
+| Payload length | 32 bits |
+| Payload | UTF-8 bytes |
+
+$$L = 1 + 32 + 8 \cdot B_{\text{payload}}$$
+
+*(Demo: a 5-byte "HELLO" payload → $1 + 32 + 40 = 73$ protocol bits.)*
+
+### Mixed-radix adaptive capacity
+
+Rather than forcing every move to carry a fixed number of bits, the number of valid candidates $R_t$ at each state is used directly as a changing radix:
+
+$$R_t = \min(|C_t|,\ R_{\max}) \qquad d_t = V \bmod R_t \qquad V \leftarrow \left\lfloor \frac{V}{R_t} \right\rfloor$$
+
+*(The prototype used $R_{\max} = 32$ as an engineering cap.)*
+
+**Capacity:**
+
+$$C_t = \log_2 R_t \qquad\qquad C_{\text{total}} = \sum_t \log_2 R_t \qquad\qquad \text{bits/move} = \frac{C_{\text{total}}}{T}$$
+
+**Worked example** — three consecutive decisions with $R_1=8,\ R_2=5,\ R_3=10$:
+
+$$C = \log_2(8) + \log_2(5) + \log_2(10) \approx 3 + 2.322 + 3.322 = 8.644 \text{ bits}$$
+
+This beats restricting every move to a power-of-two number of choices.
+
+> [!WARNING]
+> Theoretical capacity ≠ useful payload capacity. Overhead includes the sentinel, payload length, synchronization info, error handling, forced moves, risk restrictions, and candidate limitations. Experiments should report **both** $C_{\text{theoretical}}$ and $C_{\text{effective}}$.
+
+---
+
+## 📡 Blind Replay Decoder
+
+The receiver needs **no side-channel metadata** — no secret message, candidate index, digit value, or radix list. It replays the same public sequence and reconstructs the candidate ordering at each state itself.
+
+$$d_t = \text{index}(\text{move}_t \text{ within reconstructed } C_t) \qquad\qquad V_{\text{final}} = \sum_t d_t \cdot \prod_{i<t} R_i$$
+
+The final integer is converted back into the binary protocol and parsed via the sentinel + payload-length field.
+
+**Why "blind" matters:**
+- The receiver observes the public replay sequence, not a hidden channel of digits.
+- The decoder recomputes the same state-dependent candidate sets.
+- The message emerges purely from the sequence of ordinary-looking gameplay decisions.
+
+### Preserving human-like behavior
+
+A system can be technically decodable and still easy to detect if it repeatedly makes odd-looking moves — behavioral similarity is a core evaluation dimension, not a cosmetic extra.
+
+$$\text{KL}(P\|Q) = \sum_i P_i \log\frac{P_i}{Q_i} \qquad M = \tfrac{1}{2}(P_H+P_S) \qquad \text{JS}(P_H,P_S) = \tfrac{1}{2}\text{KL}(P_H\|M) + \tfrac{1}{2}\text{KL}(P_S\|M)$$
+
+Lower Jensen–Shannon divergence = closer to natural human behavior.
+
+**Practical objective** (weights tuned experimentally, then held fixed — not hand-picked to flatter results):
+
+$$J = \alpha \cdot \text{PayloadRate} - \beta \cdot \text{Risk} - \gamma \cdot \text{BehavioralDivergence} - \delta \cdot \text{DetectionScore}$$
+
+---
+
+## 📊 Human Gameplay Dataset
+
+The clickable interface automatically records gameplay into `human_gameplay.csv`, representing the information available to a human player **at decision time**.
+
+<details>
+<summary><strong>📋 Recorded fields (click to expand)</strong></summary>
+
+<br>
+
+- Session ID · Game ID · Game seed
+- Board dimensions · Mine count
+- Step number · Timestamp · Time between actions
+- Action type · Cell coordinates · Whether the action was the first move
+- Revealed cells before/after the action · Flags before/after the action
 - Remaining mine count
-- Adjacent revealed cells
-- Hidden neighboring cells
-- Frontier score
-- Distance from previous action
-- Visible board before the action
-- Visible board after the action
-- Action outcome
-- Game status
+- Adjacent revealed cells · Hidden neighboring cells
+- Frontier score · Distance from previous action
+- Visible board before/after the action
+- Action outcome · Game status
 
-Hidden mine positions should not be included in the human-behavior dataset used to model player decisions.
+</details>
+
+> [!CAUTION]
+> **Design rule:** log only information visible or inferable to the human at decision time. **Hidden mine positions are never written to the behavioral dataset.**
+
+### Mistakes are part of the dataset, on purpose
+
+| Outcome type | Kept? |
+|---|---|
+| Safe move | ✅ |
+| Mine hit | ✅ |
+| Incorrect flag | ✅ |
+| Unflag | ✅ |
+| Early loss | ✅ |
+| Late-game loss | ✅ |
+| Game win | ✅ |
+
+The objective is to learn **actual human behavior**, not idealized solver behavior. A real player misclicks, flags incorrectly, hesitates, explores a risky area, or changes their mind — all of that is signal for behavioral realism, so nothing is discarded.
 
 ---
 
-## Human Mistakes Are Part of the Dataset
+## 🧪 Research Methodology
 
-A key design decision is that mistakes are not discarded.
-
-Examples include:
-
-```text
-Safe move
-Mine hit
-Incorrect flag
-Unflag
-Early loss
-Late-game loss
-Game win
+```mermaid
+flowchart LR
+    A["Phase A\nHuman Data Collection"] --> B["Phase B\nBehavior Model"]
+    B --> C["Phase C\nSteganographic Encoding"]
+    C --> D["Phase D\nComparative Evaluation"]
+    classDef ph fill:#161b22,stroke:#58a6ff,color:#c9d1d9,stroke-width:1px;
+    class A,B,C,D ph
 ```
 
-This is important because the objective is to learn **actual human behavior**, not ideal solver behavior.
+<details>
+<summary><strong>Phase details (click to expand)</strong></summary>
 
-A human player may:
+**Phase A — Human data collection:** collect many normal games via the GUI; retain wins, losses, flags, unflags, misclicks, timing variation; use several board configurations/seeds; remove corrupted rows only when justified.
 
-- make an incorrect inference
-- choose a risky cell
-- misclick
-- flag incorrectly
-- change their mind
-- lose early
-- make a final mistake near the end of a game
+**Phase B — Behavior model:** build candidate-choice training examples per decision state; train an interpretable baseline first, then compare stronger non-linear models; calibrate probabilities; evaluate log loss, Brier score, top-k accuracy, calibration plots.
 
-These behaviors can provide useful signals for modeling behavioral realism.
+**Phase C — Steganographic encoding:** run the solver for safe/low-risk candidates; filter/rank with the learned human model; encode with mixed radix; replay the public sequence and blind-decode; repeat over many boards and message lengths.
 
----
+**Phase D — Comparative evaluation:** compare against baselines (below) across capacity, accuracy, risk, and detectability.
 
-## First-Click Rule
-
-The current Minesweeper environment protects the first clicked cell and its neighboring cells when placing mines.
-
-This prevents an immediate first-click loss and produces a more conventional Minesweeper experience.
-
-The first click is therefore treated as board initialization rather than as a meaningful risky human decision.
+</details>
 
 ---
 
-## Research Methodology
+## 📈 Main Evaluation Metrics
 
-The planned research pipeline consists of the following stages.
-
-### Stage 1 — Human Gameplay Collection
-
-Collect natural human gameplay through the clickable interface.
-
-The player simply plays Minesweeper normally.
-
-No manual candidate indexing is required.
+| Metric | Formula | Notes |
+|---|---|---|
+| **Embedding capacity** | $\dfrac{\text{payload bits}}{\text{carrier moves}}$ | bits/move |
+| **Decoding accuracy** | $\dfrac{\text{correctly recovered bits}}{\text{total embedded bits}}$ | exact recovery is the strongest outcome |
+| **Mine-hit rate** | $\dfrac{\text{mine-hit actions}}{\text{reveal actions}}$ | lower is better for a playable carrier |
+| **Win rate** | $\dfrac{\text{games won}}{\text{games played}}$ | — |
+| **Behavioral similarity** | JS / KL divergence, cross-entropy, timing & locality similarity | human vs. steganographic distributions |
+| **Steganalysis detection rate** | classifier: human vs. steganographic gameplay | good stealth ≈ 50% detection accuracy on a balanced task |
 
 ---
 
-### Stage 2 — Candidate Generation
+## 🧱 Baselines
 
-For each decision state, generate plausible candidate moves using the solver and risk model.
-
-Candidate choices can be grouped into:
-
-```text
-Guaranteed Safe
-Low Risk
-Risk-Based
+```mermaid
+flowchart TD
+    R["Random Player"] --> S["Rule / Solver Player"]
+    S --> H["Heuristic Human Model"]
+    H --> L["Learned Human Model"]
+    L --> E["Steganographic Encoder"]
+    classDef base fill:#21262d,stroke:#30363d,color:#c9d1d9,stroke-width:1px;
+    class R,S,H,L,E base
 ```
 
-depending on the available information.
+Comparing across this chain determines whether improvements genuinely come from the behavior model, rather than from simply solving Minesweeper better.
+
+### 🔬 Ablation studies
+
+- **Without human model** — solver/risk ranking only
+- **Heuristic vs. learned behavior** — handcrafted scoring vs. ML-based probabilities
+- **Without risk constraint** — allow more candidates, measure effect on mine risk
+- **Fixed-radix vs. mixed-radix** — fixed bits/move vs. adaptive $\log_2(R_t)$
+- **Without behavioral optimization** — measure how detectable gameplay becomes
 
 ---
 
-### Stage 3 — Feature Extraction
+## ✅ Current Status
 
-For every candidate move, compute features such as:
+- [x] Clickable Minesweeper interface
+- [x] First-click-safe board generation
+- [x] Human gameplay logging
+- [x] CSV dataset generation
+- [x] Visible-state solver
+- [x] Logical constraint reasoning
+- [x] Exact probability estimation for manageable states
+- [x] Human-behavior feature framework
+- [x] Heuristic behavior scoring
+- [x] Adaptive mixed-radix steganographic encoding
+- [x] Blind replay decoding
 
-\[
-\text{risk}(c)
-\]
-
-\[
-\text{information}(c)
-\]
-
-\[
-\text{locality}(c)
-\]
-
-\[
-\text{frontier}(c)
-\]
-
-along with temporal and contextual features.
+> [!NOTE]
+> **Current focus:** collecting real human gameplay and training a behavior model from observed player decisions.
 
 ---
 
-### Stage 4 — Human Behavior Model
+## 🗺️ Next Development Steps
 
-Train a model to estimate:
+```mermaid
+flowchart TD
+    n1["1. Stabilize gameplay logger"] --> n2["2. Collect human gameplay sessions"]
+    n2 --> n3["3. Convert raw logs → candidate-choice examples"]
+    n3 --> n4["4. Train behavior model"]
+    n4 --> n5["5. Calibrate predicted probabilities"]
+    n5 --> n6["6. Integrate learned behavior model"]
+    n6 --> n7["7. Generate steganographic gameplay"]
+    n7 --> n8["8. Decode from replay"]
+    n8 --> n9["9. Compare human vs. steganographic behavior"]
+    n9 --> n10["10. Perform steganalysis experiments"]
 
-\[
-P(c \mid s)
-\]
-
-meaning:
-
-> the probability that a human would select candidate \(c\) in game state \(s\).
-
-Possible baseline models include:
-
-- Logistic Regression
-- Random Forest
-- Gradient Boosting
-- Other calibrated classifiers
-
-The learned probabilities can later replace or augment the handcrafted heuristic model.
-
----
-
-## Behavioral Entropy
-
-If the human model assigns probabilities \(p_i\) to candidate moves, behavioral entropy is:
-
-\[
-H(P) =
--\sum_i p_i \log_2 p_i
-\]
-
-For \(N\) equally likely candidate choices, the maximum entropy is:
-
-\[
-H_{\max} = \log_2 N
-\]
-
-A normalized behavioral efficiency can be defined as:
-
-\[
-\eta =
-\frac{H(P)}{\log_2 N}
-\]
-
-A value close to 1 indicates behavior close to a uniform distribution over available choices.
-
----
-
-## Mixed-Radix Steganography
-
-Suppose there are \(R_t\) usable choices at move \(t\).
-
-Rather than forcing every move to encode a fixed number of bits, the system treats the candidate index as a digit:
-
-\[
-d_t \in \{0,1,\ldots,R_t-1\}
-\]
-
-The gameplay sequence therefore behaves like a mixed-radix number.
-
-The selected move is determined by:
-
-\[
-d_t = V \bmod R_t
-\]
-
-followed by:
-
-\[
-V \leftarrow \left\lfloor \frac{V}{R_t} \right\rfloor
-\]
-
-where \(V\) is the remaining message value.
-
-The information capacity of move \(t\) is:
-
-\[
-C_t = \log_2 R_t
-\]
-
-and total theoretical capacity is:
-
-\[
-C =
-\sum_t \log_2 R_t
-\]
-
----
-
-## Example
-
-Suppose three consecutive decisions have:
-
-```text
-R₁ = 8
-R₂ = 5
-R₃ = 10
+    classDef done fill:#238636,stroke:#3fb950,color:#fff,stroke-width:1px;
+    classDef now fill:#9e6a03,stroke:#d29922,color:#fff,stroke-width:1px;
+    classDef todo fill:#21262d,stroke:#30363d,color:#8b949e,stroke-width:1px;
+    class n1 done
+    class n2 now
+    class n3,n4,n5,n6,n7,n8,n9,n10 todo
 ```
 
-Then:
-
-\[
-C =
-\log_2(8)
-+
-\log_2(5)
-+
-\log_2(10)
-\]
-
-\[
-C \approx
-3 + 2.322 + 3.322
-= 8.644 \text{ bits}
-\]
-
-This is more efficient than restricting every move to a power-of-two number of choices.
+🟢 Done · 🟠 In progress · ⚪ Planned
 
 ---
 
-## Capacity vs. Effective Payload
-
-The theoretical capacity is not necessarily equal to useful payload capacity.
-
-Practical overhead can include:
-
-- Sentinel
-- Payload length
-- Synchronization information
-- Error-handling information
-- Forced moves
-- Risk restrictions
-- Candidate limitations
-
-Therefore, experiments should report both:
-
-\[
-C_{\text{theoretical}}
-\]
-
-and
-
-\[
-C_{\text{effective}}
-\]
-
----
-
-## Risk Modeling
-
-For a candidate cell \(c\), the estimated mine probability is:
-
-\[
-P(M_c = 1 \mid S)
-\]
-
-where \(S\) represents the visible board state.
-
-The system can classify candidate choices using thresholds such as:
-
-```text
-0%       → Guaranteed Safe
-Low %    → Low Risk
-Higher % → Risk-Based
-100%     → Guaranteed Mine
-```
-
-A risk-aware encoder can prioritize candidates that provide sufficient encoding capacity without making gameplay obviously unsafe.
-
----
-
-## Behavioral Similarity
-
-A major research objective is not simply:
-
-> Can the secret message be decoded?
-
-It is also:
-
-> Does the resulting gameplay look like natural human gameplay?
-
-If \(P_H\) is the human behavior distribution and \(P_S\) is the steganographic behavior distribution, one possible comparison is Jensen-Shannon divergence.
-
-First define:
-
-\[
-M = \frac{1}{2}(P_H + P_S)
-\]
-
-Then:
-
-\[
-JS(P_H,P_S)
-=
-\frac{1}{2}D_{KL}(P_H\|M)
-+
-\frac{1}{2}D_{KL}(P_S\|M)
-\]
-
-where:
-
-\[
-D_{KL}(P\|Q)
-=
-\sum_i P_i\log\frac{P_i}{Q_i}
-\]
-
-Lower divergence indicates greater behavioral similarity.
-
----
-
-## Main Evaluation Metrics
-
-The final experimental system should measure:
-
-### 1. Embedding Capacity
-
-\[
-\text{bits/move}
-=
-\frac{\text{payload bits}}
-{\text{carrier moves}}
-\]
-
----
-
-### 2. Decoding Accuracy
-
-\[
-\text{Accuracy}
-=
-\frac{\text{correctly recovered bits}}
-{\text{total embedded bits}}
-\]
-
-The strongest outcome is exact message recovery.
-
----
-
-### 3. Mine-Hit Rate
-
-\[
-\text{Mine Hit Rate}
-=
-\frac{\text{mine-hit actions}}
-{\text{reveal actions}}
-\]
-
-Lower is generally preferable for a playable carrier.
-
----
-
-### 4. Win Rate
-
-\[
-\text{Win Rate}
-=
-\frac{\text{games won}}
-{\text{games played}}
-\]
-
----
-
-### 5. Behavioral Similarity
-
-Compare human and steganographic gameplay distributions using metrics such as:
-
-- Jensen-Shannon divergence
-- KL divergence
-- Cross-entropy
-- Timing distribution similarity
-- Move locality similarity
-
----
-
-### 6. Steganalysis Detection Rate
-
-Train a classifier to distinguish:
-
-```text
-Human gameplay
-vs.
-Steganographic gameplay
-```
-
-A good stealth-oriented system should make this classification difficult.
-
-A useful evaluation is:
-
-\[
-\text{Detection Accuracy}
-\approx 50\%
-\]
-
-for a balanced binary classification task, although the exact interpretation depends on the experimental design and classifier.
-
----
-
-## Baselines
-
-The research should compare several systems:
-
-```text
-Random Player
-      ↓
-Rule / Solver Player
-      ↓
-Heuristic Human Model
-      ↓
-Learned Human Model
-      ↓
-Steganographic Encoder
-```
-
-This helps determine whether improvements are actually coming from the behavior model and not simply from solving Minesweeper better.
-
----
-
-## Ablation Studies
-
-Useful ablations include:
-
-### Without Human Model
-
-Use solver/risk ranking only.
-
-### Heuristic vs. Learned Behavior
-
-Compare handcrafted scoring with ML-based probabilities.
-
-### Without Risk Constraint
-
-Allow more candidate moves and measure the effect on mine risk.
-
-### Fixed-Radix vs. Mixed-Radix
-
-Compare fixed bits-per-move encoding with:
-
-\[
-\log_2(R_t)
-\]
-
-adaptive capacity.
-
-### Without Behavioral Optimization
-
-Measure how detectable the gameplay becomes.
-
----
-
-## Current Status
-
-The project currently includes:
-
-- Clickable Minesweeper interface
-- First-click-safe board generation
-- Human gameplay logging
-- CSV dataset generation
-- Visible-state solver
-- Logical constraint reasoning
-- Exact probability estimation for manageable states
-- Human-behavior feature framework
-- Heuristic behavior scoring
-- Adaptive mixed-radix steganographic encoding
-- Blind replay decoding
-
-The current development focus is:
-
-> **Collecting real human gameplay and training a behavior model from observed player decisions.**
-
----
-
-## Next Development Steps
-
-```text
-1. Stabilize gameplay logger
-        ↓
-2. Collect human gameplay sessions
-        ↓
-3. Convert raw logs into candidate-choice examples
-        ↓
-4. Train behavior model
-        ↓
-5. Calibrate predicted probabilities
-        ↓
-6. Integrate learned behavior model
-        ↓
-7. Generate steganographic gameplay
-        ↓
-8. Decode from replay
-        ↓
-9. Compare human vs. steganographic behavior
-        ↓
-10. Perform steganalysis experiments
-```
-
----
-
-## Repository Structure
+## 📁 Repository Structure
 
 ```text
 Minesweeper/
 │
-├── clickable_minesweeper.py
-├── minesweeper.py
-├── solver.py
-├── encoder.py
-├── decoder.py
-├── behavior_model.py
-├── experiments.py
-├── data_collector.py
+├── clickable_minesweeper.py   # GUI + automatic logging
+├── minesweeper.py              # Core game logic
+├── solver.py                   # Visible-state solver
+├── encoder.py                  # Mixed-radix steganographic encoder
+├── decoder.py                  # Blind replay decoder
+├── behavior_model.py           # Human behavior scoring
+├── experiments.py              # Experiment pipeline
+├── data_collector.py           # Logging utilities
 │
-├── human_gameplay.csv        # ignored by Git
+├── human_gameplay.csv          # Collected dataset (ignored by Git)
+│
+├── assets/
+│   └── banner.png              # README banner
 │
 ├── .gitignore
 └── README.md
@@ -759,57 +456,129 @@ Minesweeper/
 
 ---
 
-## Running the Game
+## ▶️ Running the Game
 
-Make sure Python 3 is installed.
-
-Run:
+**Requirements:** Python 3.9+
 
 ```bash
 python clickable_minesweeper.py
 ```
 
-The graphical interface should open.
+| Control | Action |
+|---|---|
+| 🖱️ Left Click | Reveal |
+| 🖱️ Right Click | Flag / Unflag |
+| 🖱️🖱️ Double Click | Chord a revealed number |
+| 🔄 Reset | Start a new game |
 
-### Controls
+Gameplay data is automatically written to `human_gameplay.csv`.
 
-```text
-Left Click   → Reveal
-Right Click  → Flag / Unflag
-Double Click → Chord a revealed number
-Reset        → Start a new game
-```
-
-Gameplay data is automatically written to:
-
-```text
-human_gameplay.csv
-```
-
----
-
-## Research Caveat
-
-This project should be presented as an **experimental research framework**, not as a claim that Minesweeper gameplay steganography itself is unprecedented.
-
-The research contribution is being developed around the combination of:
-
-- gameplay-sequence steganography
-- adaptive candidate-space capacity
-- risk-aware move selection
-- learned human behavior
-- behavioral similarity
-- steganalysis
-
-The novelty and positioning should ultimately be validated through a systematic literature review.
+<!--
+🖼️ Add real screenshots once available, e.g.:
+<p align="center">
+  <img src="assets/screenshot_board.png" width="45%">
+  <img src="assets/screenshot_dashboard.png" width="45%">
+</p>
+-->
 
 ---
 
-## Author
+## 🎓 Research Caveat
 
-**Arnav Kumar**
-**Raunak Shukla**
+> [!IMPORTANT]
+> This project should be presented as an **experimental research framework**, not as a claim that Minesweeper gameplay steganography is itself unprecedented. The research contribution is being developed around the *combination* of:
+> - gameplay-sequence steganography
+> - adaptive candidate-space capacity
+> - risk-aware move selection
+> - learned human behavior
+> - behavioral similarity
+> - steganalysis
+>
+> Novelty and positioning should ultimately be validated through a systematic literature review.
 
+> [!WARNING]
+> **Things not to overclaim:**
+> - A single-player pilot dataset cannot represent the population of Minesweeper players — describe it as a personal/pilot dataset.
+> - A successful "HELLO" replay demonstrates feasibility, not general security — that requires many boards, seeds, payload lengths, and repeated trials.
+> - The first-click-safe rule changes early-game state distribution and should be declared as part of the experimental environment.
+> - Exact enumeration scales exponentially with unresolved binary variables in the worst case — solver runtime must be measured and reported.
+> - A high theoretical mixed-radix capacity does **not** automatically mean high practical secure capacity — behavioral and risk constraints reduce usable choices.
+
+---
+
+## ❓ Questions a Professor May Ask
+
+<details>
+<summary><strong>Click to expand the anticipated Q&A</strong></summary>
+
+<br>
+
+**Q: Why use Minesweeper?**
+A: It offers a discrete, visible, state-dependent action space where the set of plausible moves changes over time — making the action sequence a natural adaptive carrier.
+
+**Q: Why collect human data?**
+A: A hand-written heuristic can look plausible without being empirically human. Real choices enable a learned probability model and a measurable behavioral-similarity metric.
+
+**Q: What exactly is hidden?**
+A: The payload is represented by the sequence of *selected gameplay actions* — not by writing secret bits directly to the board.
+
+**Q: How does the receiver decode?**
+A: By replaying the same public gameplay under the same protocol, reconstructing candidate sets/radices, and converting selected candidate positions back into digits.
+
+**Q: What is the capacity?**
+A: At state $t$: $\log_2$ of the usable candidate count. Over a sequence: the sum of these values.
+
+**Q: What is the trade-off?**
+A: More candidate freedom increases capacity, but unsafe or behaviorally unusual choices increase risk and detectability.
+
+**Q: How will you prove it is research, not just a game?**
+A: Quantitative experiments — predictive modeling of human choice, blind-decoding reliability, risk/win-rate measurements, behavioral divergence, steganalysis, and ablation studies.
+
+**Q: What is the current status?**
+A: The clickable GUI, automated logger, solver, heuristic behavior model, mixed-radix encoder, and blind decoder prototypes all exist; the major next step is a learned human model trained on clean gameplay data.
+
+</details>
+
+---
+
+## 📚 Appendix A — Compact Formula Sheet
+
+<details>
+<summary><strong>Click to expand the full formula reference</strong></summary>
+
+<br>
+
+| Concept | Formula |
+|---|---|
+| Neighbor set | $N(r,c) = \{(r+dr,c+dc): dr,dc\in\{-1,0,1\}, (dr,dc)\neq(0,0)\}$ |
+| Cell number | $n(r,c) = \sum \mathbb{1}[\text{neighbor is a mine}]$ |
+| Constraint | $\sum_{j\in U} x_j = k - f$ |
+| Exact risk | $P(x_j=1\mid S) = \dfrac{\text{valid assignments with }x_j=1}{\text{valid assignments}}$ |
+| Risk-filtered candidates | $C_t = \{c : P(\text{mine}\mid S_t,c) \leq \tau\}$ |
+| Softmax behavior | $P(c_i\mid S_t) = \dfrac{e^{\beta s_i}}{\sum_j e^{\beta s_j}}$ |
+| Behavior entropy | $H = -\sum p_i \log_2 p_i$ |
+| Behavior efficiency | $\eta = H / \log_2 N$ |
+| Mixed-radix digit | $d_t = V_t \bmod R_t$ |
+| State update | $V_{t+1} = \lfloor V_t / R_t \rfloor$ |
+| Per-step capacity | $C_t = \log_2 R_t$ |
+| Total capacity | $C_{\text{total}} = \sum_t \log_2 R_t$ |
+| Replay reconstruction | $V = \sum_t d_t \prod_{i<t} R_i$ |
+| Jensen–Shannon divergence | $\text{JS}(P,Q) = \tfrac{1}{2}\text{KL}(P\|M) + \tfrac{1}{2}\text{KL}(Q\|M),\ M=\tfrac12(P+Q)$ |
+| Log loss | $-\frac{1}{N}\sum \log p_i(y_i)$ |
+| Brier score | $\frac{1}{N}\sum(p_i-y_i)^2$ |
+| Mine-hit rate | $\text{mine-hit reveals} / \text{total reveals}$ |
+| Win rate | $\text{wins} / \text{completed games}$ |
+
+**Bottom line:** build a normal Minesweeper game → collect real human decisions → learn what humans naturally choose → use that decision freedom as an adaptive communication channel → evaluate capacity, safety, decoding reliability, and detectability.
+
+</details>
+
+---
+
+## 👥 Authors
+
+**Arnav Kumar** · **Raunak Shukla**
 B.Tech AI & ML
 
-This repository is intended for academic research and experimentation.
+*This repository is intended for academic research and experimentation.*
+
