@@ -24,13 +24,6 @@ dist/
 
 .ipynb_checkpoints/
 
-# =========================
-# Project Data
-# =========================
-
-# Human gameplay dataset
-human_gameplay.csv
-
 # CSV backups / temporary datasets
 *.csv.bak
 *.csv.tmp
