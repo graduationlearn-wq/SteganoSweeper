@@ -1,0 +1,41 @@
+{
+  "model_type": "conditional_logit",
+  "version": 1,
+  "feature_names": [
+    "safety",
+    "information",
+    "locality",
+    "frontier"
+  ],
+  "means": [
+    0.6230899435886696,
+    0.4536669157795199,
+    0.16667482905553016,
+    0.24586828539181144
+  ],
+  "scales": [
+    0.19697849073425178,
+    0.07996782596942197,
+    0.10803846152745697,
+    0.19947666113181864
+  ],
+  "coefficients": [
+    1.7723638659217205,
+    -0.12083362721066784,
+    1.3367476051094327,
+    1.44567915707824
+  ],
+  "regularization": 2.0,
+  "training_decisions": 696,
+  "training_games": 28,
+  "skipped_rows": 0,
+  "validation": {
+    "decisions": 169,
+    "top1_accuracy": 0.6627218934911243,
+    "top3_accuracy": 0.9230769230769231,
+    "top5_accuracy": 0.9408284023668639,
+    "mean_choice_nll": 0.9943988861894797,
+    "uniform_baseline_nll": 3.7881245208013996
+  },
+  "note": "Pilot model from one player's gameplay; exploratory, not a population-level human model."
+}
